@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elementary Symphony — Game</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="navbar" id="game-nav">
+  <div class="logo">🎵 Elementary Symphony</div>
+  <div class="flex" style="gap:0.75rem">
+    <div id="nav-stars" style="color:#F6C90E;font-weight:700;font-size:1.1rem"></div>
+    <button class="btn btn-outline btn-sm" style="color:#666" onclick="goBack()">← Dashboard</button>
+  </div>
+</nav>
+
+<!-- GAME HEADER (shows during game) -->
+<div id="game-header" style="display:none">
+  <div class="game-header" id="gh-inner">
+    <div>
+      <div style="font-size:0.78rem;opacity:0.7;font-weight:600" id="gh-unit"></div>
+      <div style="font-size:1rem;font-weight:700" id="gh-round"></div>
+    </div>
+    <div class="flex" style="flex:1;margin:0 1rem;gap:0.5rem;align-items:center">
+      <div class="xp-bar-wrap" style="flex:1">
+        <div class="xp-bar-fill" id="xp-bar" style="width:0%"></div>
+      </div>
+    </div>
+    <div>
+      <div class="score-display" id="gh-score">0 pts</div>
+      <div class="round-indicator" id="round-dots"></div>
+    </div>
+  </div>
+</div>
+
+<div class="container" id="main-content" style="padding-top:1.5rem">
+  <div class="center" style="padding:3rem;color:#999">Loading game...</div>
+</div>
+
+<!-- HINT DISPLAY -->
+<div id="hint-display" style="display:none;position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);z-index:150;max-width:480px;width:90%">
+  <div style="background:#fff8e1;border:2px solid #f39c12;border-radius:12px;padding:1rem 1.25rem;box-shadow:0 4px 20px rgba(0,0,0,0.15)">
+    <div style="font-size:0.78rem;font-weight:700;color:#f39c12;margin-bottom:0.3rem" id="hint-tier-label">HINT</div>
+    <div style="font-size:0.95rem;color:#555" id="hint-text"></div>
+    <button class="btn btn-sm mt1" style="background:#f39c12;color:white" onclick="closeHint()">Got it ✓</button>
+  </div>
+</div>
+
+<!-- FEEDBACK OVERLAY -->
+<div class="feedback-overlay" id="feedback" style="display:none">
+  <div class="feedback-bubble" id="feedback-bubble"></div>
+</div>
+
+<script src="vocabulary-data.js"></script>
+<script src="progress.js"></script>
+<script>
+// ── INIT ─────────────────────────────────────────────────────────────
+const params  = new URLSearchParams(location.search);
+const unitId  = parseInt(params.get('unit')) || 1;
+
+// Read student identity from URL first (supports multiple students)
+// This means each student's game URL is independent — bookmarkable
+const school = (params.get('school') || sessionStorage.getItem('es_school') || '').toUpperCase();
+const sid    = (params.get('id')     || sessionStorage.getItem('es_id')     || '').toUpperCase();
+
+if (!school || !sid) { window.location.href = 'index.html'; }
+
+// Sync to sessionStorage for this tab
+sessionStorage.setItem('es_school', school);
+sessionStorage.setItem('es_id', sid);
+
+// Load this student's saved data from localStorage
+PROGRESS.login(school, sid);
+const unitData = VOCAB_DATA.units.find(u => u.id === unitId);
+if (!unitData) { window.location.href = 'dashboard.html'; }
+
+// Set CSS color variable
+document.documentElement.style.setProperty('--unit-color', unitData.color);
+document.documentElement.style.setProperty('--unit-light', unitData.lightColor);
+
+// Game state
+let state = {
+  phase: 'intro',   // intro | round1 | round2 | round3 | round4 | quiz | complete
+  round: 0,
+  score: 0,
+  xp: 0,
+  wordIndex: 0,
+  words: [...unitData.words],
+  roundWords: [],
+  hintTier: 0,
+  hintUsed: false,
+  currentWord: null,
+  choices: [],
+  correctIndex: -1,
+  answered: false
+};
+
+updateNavStars();
+
+// ── SCREENS ──────────────────────────────────────────────────────────
+function updateNavStars() {
+  document.getElementById('nav-stars').textContent = `⭐ ${PROGRESS.getTotalStars()}`;
+}
+
+function showIntro() {
+  state.phase = 'intro';
+  document.getElementById('game-header').style.display = 'none';
+  const up = PROGRESS.getUnitProgress(unitId);
+  document.getElementById('main-content').innerHTML = `
+    <div class="fade-in">
+      <div class="word-card" style="--unit-color:${unitData.color};max-width:600px">
+        <span class="emoji">🎮</span>
+        <div class="word" style="font-size:1.4rem">${unitData.game}</div>
+        <div class="pos">Unit ${unitId}: ${unitData.theme}</div>
+        <div class="def" style="margin-top:0.8rem">${unitData.bigIdea}</div>
+        <div style="background:${unitData.lightColor};border-radius:8px;padding:1rem;margin-top:1rem;font-size:0.9rem;color:#555">
+          <b>Essential Question:</b> ${unitData.essentialQuestion}
+        </div>
+        <div style="margin-top:1rem;font-size:0.9rem;color:#777">
+          <b>📚 ${unitData.words.length} vocabulary words</b> · 4 game rounds · AI hints available
+        </div>
+      </div>
+      <div class="center mt3">
+        <button class="btn btn-lg" style="background:${unitData.color};color:white;font-size:1.1rem" onclick="startRound(1)">
+          🚀 Start Game
+        </button>
+        <br><br>
+        <button class="btn btn-outline btn-sm" style="color:${unitData.color};border-color:${unitData.color}" onclick="showStory()">
+          📖 Read the Story First
+        </button>
+      </div>
+    </div>`;
+}
+
+function showStory() {
+  document.getElementById('main-content').innerHTML = `
+    <div class="fade-in">
+      <div class="story-card" style="--unit-color:${unitData.color};max-width:640px;margin:0 auto">
+        <div class="story-title">📖 ${unitData.storyTitle}</div>
+        <p>${unitData.story}</p>
+      </div>
+      <div class="center mt2">
+        <button class="btn btn-lg" style="background:${unitData.color};color:white" onclick="startRound(1)">🎮 Play Now</button>
+      </div>
+    </div>`;
+}
+
+// ── ROUND ENGINE ──────────────────────────────────────────────────────
+function startRound(round, resumeFromIndex) {
+  state.round = round;
+  state.phase = `round${round}`;
+  // Only reset wordIndex if NOT resuming — preserve resume position
+  if (typeof resumeFromIndex === 'number') {
+    state.wordIndex = resumeFromIndex;
+  } else {
+    state.wordIndex = 0;
+  }
+  state.hintTier = 0;
+  state.score = state.score || 0;
+
+  // Shuffle words for each round
+  state.roundWords = [...unitData.words].sort(() => Math.random() - 0.5);
+  // Limit: Round 1=15, Round 2=10, Round 3=8, Round 4=5
+  const limits = [15, 10, 8, 5];
+  state.roundWords = state.roundWords.slice(0, limits[round-1]);
+
+  // Update header
+  document.getElementById('game-header').style.display = 'block';
+  document.getElementById('gh-inner').style.background = unitData.color;
+  document.getElementById('gh-unit').textContent = `Unit ${unitId}: ${unitData.theme}`;
+
+  const roundNames = ['','Round 1: Match the Word 🖼️','Round 2: Fill the Blank ✏️','Round 3: Choose the Best Word 🎯','Round 4: Connect the Words 🔗'];
+  document.getElementById('gh-round').textContent = roundNames[round];
+
+  // Dots
+  const dots = document.getElementById('round-dots');
+  dots.innerHTML = [1,2,3,4].map(i =>
+    `<div class="round-dot ${i < round ? 'done' : i === round ? 'active' : ''}"></div>`
+  ).join('');
+
+  showQuestion();
+}
+
+function showQuestion() {
+  if (state.wordIndex >= state.roundWords.length) { endRound(); return; }
+  state.currentWord = state.roundWords[state.wordIndex];
+  state.hintTier = 0;
+  state.hintUsed = false;
+  state.answered = false;
+  closeHint();
+  updateScore();
+
+  const w = state.currentWord;
+  const r = state.round;
+
+  if (r === 1) renderRound1(w);
+  else if (r === 2) renderRound2(w);
+  else if (r === 3) renderRound3(w);
+  else if (r === 4) renderRound4(w);
+}
+
+// ROUND 1 — Word → Emoji/Definition Matching
+function renderRound1(w) {
+  const others = unitData.words.filter(x=>x.word!==w.word).sort(()=>Math.random()-0.5).slice(0,3);
+  const choices = shuffle([w,...others]);
+  state.choices = choices;
+  state.correctIndex = choices.indexOf(w);
+
+  document.getElementById('main-content').innerHTML = `
+    <div class="fade-in" style="max-width:540px;margin:0 auto">
+      <div class="center" style="color:#999;font-size:0.85rem;margin-bottom:1rem">
+        Word ${state.wordIndex+1} of ${state.roundWords.length}
+      </div>
+      <div class="word-card" style="--unit-color:${unitData.color}">
+        <span class="emoji">${w.emoji}</span>
+        <div class="def">${w.def}</div>
+        <div class="example">"${w.example}"</div>
+      </div>
+      <div style="text-align:center;color:#555;font-size:0.9rem;margin:1rem 0;font-weight:600">Which word matches this definition?</div>
+      <div class="choices">
+        ${choices.map((c,i)=>`
+          <button class="choice-btn" id="choice-${i}" onclick="checkAnswer(${i},${i===state.correctIndex})">
+            ${c.word}
+          </button>`).join('')}
+      </div>
+      <div class="center mt2">
+        <button class="btn btn-hint btn-sm" onclick="showHint()">💡 Hint (${3-state.hintTier} left)</button>
+      </div>
+    </div>`;
+}
+
+// ROUND 2 — Fill in the Blank
+function renderRound2(w) {
+  const sentence = w.example.replace(new RegExp(w.word,'gi'), '_____');
+  const others = unitData.words.filter(x=>x.word!==w.word).sort(()=>Math.random()-0.5).slice(0,3);
+  const choices = shuffle([w,...others]);
+  state.choices = choices;
+  state.correctIndex = choices.indexOf(w);
+
+  document.getElementById('main-content').innerHTML = `
+    <div class="fade-in" style="max-width:540px;margin:0 auto">
+      <div class="center" style="color:#999;font-size:0.85rem;margin-bottom:1rem">
+        Word ${state.wordIndex+1} of ${state.roundWords.length}
+      </div>
+      <div class="word-card" style="--unit-color:${unitData.color};padding:1.5rem">
+        <div class="story-title" style="font-size:1rem;color:${unitData.color}">Fill in the blank:</div>
+        <div style="font-size:1.15rem;font-style:italic;color:#333;margin-top:0.5rem;line-height:1.7">"${sentence}"</div>
+      </div>
+      <div class="choices mt2">
+        ${choices.map((c,i)=>`
+          <button class="choice-btn" id="choice-${i}" onclick="checkAnswer(${i},${i===state.correctIndex})">
+            ${c.word} <span style="font-size:0.78rem;color:#999">(${c.pos})</span>
+          </button>`).join('')}
+      </div>
+      <div class="center mt2">
+        <button class="btn btn-hint btn-sm" onclick="showHint()">💡 Hint</button>
+      </div>
+    </div>`;
+}
+
+// ROUND 3 — Choose the Best Word for a Situation
+function renderRound3(w) {
+  const others = unitData.words.filter(x=>x.word!==w.word).sort(()=>Math.random()-0.5).slice(0,3);
+  const choices = shuffle([w,...others]);
+  state.choices = choices;
+  state.correctIndex = choices.indexOf(w);
+  const situation = `A student keeps trying to solve a math problem even after making many mistakes. Which word best describes what this student is doing? (Hint: the word means "${w.def.toLowerCase()}")`;
+
+  document.getElementById('main-content').innerHTML = `
+    <div class="fade-in" style="max-width:540px;margin:0 auto">
+      <div class="center" style="color:#999;font-size:0.85rem;margin-bottom:1rem">
+        Word ${state.wordIndex+1} of ${state.roundWords.length}
+      </div>
+      <div class="word-card" style="--unit-color:${unitData.color};padding:1.5rem;text-align:left">
+        <div style="font-size:0.8rem;font-weight:700;color:${unitData.color};margin-bottom:0.5rem">SITUATION:</div>
+        <div style="font-size:1rem;line-height:1.6;color:#333">
+          ${w.example} Which word from this unit fits best here?
+        </div>
+      </div>
+      <div class="choices mt2">
+        ${choices.map((c,i)=>`
+          <button class="choice-btn" id="choice-${i}" onclick="checkAnswer(${i},${i===state.correctIndex})">
+            <b>${c.word}</b><br><span style="font-size:0.78rem;color:#777">${c.def.slice(0,50)}...</span>
+          </button>`).join('')}
+      </div>
+      <div class="center mt2">
+        <button class="btn btn-hint btn-sm" onclick="showHint()">💡 Hint</button>
+      </div>
+    </div>`;
+}
+
+// ROUND 4 — Word Connection (simplified for Prototype V1)
+function renderRound4(w) {
+  const w2 = unitData.words.filter(x=>x.word!==w.word)[Math.floor(Math.random()*14)];
+  const options = [
+    `Both "${w.word}" and "${w2.word}" describe actions or qualities that help you grow.`,
+    `"${w.word}" means ${w.def.toLowerCase().slice(0,30)}...`,
+    `These words have nothing in common.`,
+    `Both words are used to describe people who are lazy.`
+  ];
+  const correctOpt = 1; // second option is always a direct definition (correct)
+  state.correctIndex = correctOpt;
+
+  document.getElementById('main-content').innerHTML = `
+    <div class="fade-in" style="max-width:540px;margin:0 auto">
+      <div class="center" style="color:#999;font-size:0.85rem;margin-bottom:1rem">
+        Word ${state.wordIndex+1} of ${state.roundWords.length}
+      </div>
+      <div class="word-card" style="--unit-color:${unitData.color};padding:1.5rem;text-align:center">
+        <span class="emoji">${w.emoji}</span>
+        <div class="word">${w.word}</div>
+        <div class="pos">${w.pos}</div>
+      </div>
+      <div style="text-align:center;color:#555;font-size:0.9rem;margin:1rem 0;font-weight:600">
+        Which statement about this word is CORRECT?
+      </div>
+      <div style="display:grid;gap:0.75rem;margin-top:0.5rem">
+        ${options.map((opt,i)=>`
+          <button class="choice-btn" id="choice-${i}" onclick="checkAnswer(${i},${i===correctOpt})" style="text-align:left">
+            ${opt}
+          </button>`).join('')}
+      </div>
+      <div class="center mt2">
+        <button class="btn btn-hint btn-sm" onclick="showHint()">💡 Hint</button>
+      </div>
+    </div>`;
+}
+
+// ── ANSWER CHECK ──────────────────────────────────────────────────────
+function checkAnswer(index, correct) {
+  if (state.answered) return;
+  state.answered = true;
+  const btn = document.getElementById(`choice-${index}`);
+  const w = state.currentWord;
+
+  // Record in progress engine
+  PROGRESS.recordAttempt(unitId, w.word, correct, state.hintTier);
+  updateNavStars();
+
+  if (correct) {
+    btn.classList.add('correct');
+    const pts = state.hintTier === 0 ? 10 : state.hintTier === 1 ? 7 : 4;
+    state.score += pts;
+    state.xp = Math.min(100, state.xp + pts);
+    updateScore();
+    showFeedback(true, `+${pts} pts`);
+    // Save resume point after every correct answer
+    PROGRESS.saveGameState(unitId, state.round, state.wordIndex + 1, state.score, state.xp);
+    setTimeout(() => { state.wordIndex++; showQuestion(); }, 1200);
+  } else {
+    btn.classList.add('wrong');
+    showFeedback(false, 'Not quite — try again!');
+
+    if (state.hintTier >= 3) {
+      // All hints used — reveal correct answer and move on
+      if (state.correctIndex >= 0) {
+        const cb = document.getElementById(`choice-${state.correctIndex}`);
+        if (cb) cb.classList.add('correct');
+      }
+      PROGRESS.saveGameState(unitId, state.round, state.wordIndex + 1, state.score, state.xp);
+      setTimeout(() => { state.wordIndex++; showQuestion(); }, 2200);
+    } else {
+      // Show next hint tier then UNLOCK buttons so student can retry
+      state.hintTier++;
+      setTimeout(() => {
+        showHint();
+        // Reset answered flag so student can pick again after reading hint
+        state.answered = false;
+      }, 700);
+    }
+  }
+}
+
+// ── HINT SYSTEM ───────────────────────────────────────────────────────
+function showHint() {
+  const w = state.currentWord;
+  if (!w) return;
+  if (state.hintTier < 3) state.hintTier++;
+  state.hintUsed = true;
+
+  const tierLabels = ['','💡 HINT 1 — What it means','🔠 HINT 2 — Word clue','🧩 HINT 3 — Fill the gap'];
+  const hintTexts = [w.hint1, w.hint2, w.hint3];
+
+  document.getElementById('hint-tier-label').textContent = tierLabels[state.hintTier] || 'HINT';
+  document.getElementById('hint-text').textContent = hintTexts[state.hintTier-1] || w.hint1;
+  document.getElementById('hint-display').style.display = 'block';
+}
+
+function closeHint() {
+  document.getElementById('hint-display').style.display = 'none';
+}
+
+// ── FEEDBACK ──────────────────────────────────────────────────────────
+function showFeedback(correct, msg) {
+  const fb = document.getElementById('feedback');
+  const bb = document.getElementById('feedback-bubble');
+  bb.textContent = correct ? `✅ ${msg}` : `❌ ${msg}`;
+  bb.className = `feedback-bubble ${correct ? 'feedback-correct' : 'feedback-wrong'}`;
+  fb.style.display = 'flex';
+  setTimeout(() => { fb.style.display = 'none'; }, 1400);
+}
+
+// ── ROUND END ─────────────────────────────────────────────────────────
+function endRound() {
+  closeHint();
+  if (state.round < 4) {
+    document.getElementById('game-header').style.display = 'none';
+    document.getElementById('main-content').innerHTML = `
+      <div class="fade-in center" style="padding:2rem">
+        <div style="font-size:3rem">🎉</div>
+        <h2 style="color:${unitData.color};margin:0.5rem 0">Round ${state.round} Complete!</h2>
+        <div style="font-size:1.2rem;color:#555;margin:0.5rem 0">Score so far: <b>${state.score} pts</b></div>
+        <div style="color:#999;font-size:0.9rem;margin-bottom:1.5rem">Keep going — Round ${state.round+1} next!</div>
+        <button class="btn btn-lg" style="background:${unitData.color};color:white" onclick="startRound(${state.round+1})">
+          Round ${state.round+1} →
+        </button>
+      </div>`;
+  } else {
+    showUnitComplete();
+  }
+}
+
+// ── UNIT COMPLETE ─────────────────────────────────────────────────────
+function showUnitComplete() {
+  document.getElementById('game-header').style.display = 'none';
+  const unitStars = PROGRESS.getUnitStars(unitId);
+  const maxStars  = unitData.words.length * 3;
+
+  // Auto-save session completion (quiz score simulated for V1)
+  const simScore = Math.min(20, Math.round(state.score / 10));
+  PROGRESS.saveQuizScore(unitId, simScore);
+  updateNavStars();
+
+  document.getElementById('main-content').innerHTML = `
+    <div class="fade-in center" style="padding:2rem;max-width:560px;margin:0 auto">
+      <div style="font-size:4rem">🏆</div>
+      <h1 style="color:${unitData.color};margin:0.5rem 0">Unit ${unitId} Complete!</h1>
+      <h3 style="color:#555;font-weight:400;margin-bottom:1.5rem">${unitData.theme}</h3>
+
+      <div class="card" style="text-align:left">
+        <div class="flex" style="justify-content:space-between;flex-wrap:wrap;gap:1rem">
+          <div class="center">
+            <div style="font-size:2rem;font-weight:800;color:#F6C90E">${state.score}</div>
+            <div style="font-size:0.8rem;color:#999">Total Points</div>
+          </div>
+          <div class="center">
+            <div style="font-size:2rem;font-weight:800;color:${unitData.color}">${unitStars}</div>
+            <div style="font-size:0.8rem;color:#999">Stars Earned / ${maxStars}</div>
+          </div>
+          <div class="center">
+            <div style="font-size:2rem;font-weight:800;color:#27ae60">${simScore}/20</div>
+            <div style="font-size:0.8rem;color:#999">Quiz Score</div>
+          </div>
+        </div>
+        <div class="progress-bar-wrap mt2">
+          <div class="progress-bar-fill" style="width:${Math.round(unitStars/maxStars*100)}%;background:${unitData.color}"></div>
+        </div>
+        <div style="font-size:0.8rem;color:#999;margin-top:0.3rem;text-align:center">${Math.round(unitStars/maxStars*100)}% mastery</div>
+      </div>
+
+      <div style="margin:1.5rem 0">
+        <h3 style="color:#555;margin-bottom:0.75rem">⭐ Word Mastery Summary</h3>
+        <div class="word-grid">
+          ${unitData.words.map(w => {
+            const wd = PROGRESS.getWordData(unitId, w.word);
+            const s = wd ? wd.stars : 0;
+            return `<div class="word-chip s${s}">
+              ${w.emoji} ${w.word}<br>
+              <span style="font-size:0.75rem">${'★'.repeat(s)}${'☆'.repeat(3-s)}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <div class="flex-wrap" style="justify-content:center;gap:1rem;margin-top:1rem">
+        ${unitId < 5 ? `<button class="btn btn-lg" style="background:${VOCAB_DATA.units[unitId].color};color:white" onclick="window.location.href=`games.html?unit=${unitId+1}&school=${encodeURIComponent(school)}&id=${encodeURIComponent(sid)}`">
+          Next: Unit ${unitId+1} →
+        </button>` : '<div class="badge badge-gold" style="font-size:1rem;padding:0.75rem 1.5rem">🏅 All Units Complete!</div>'}
+        <button class="btn btn-outline" style="color:${unitData.color};border-color:${unitData.color}" onclick="goBack()">
+          ← Dashboard
+        </button>
+      </div>
+    </div>`;
+}
+
+// ── UTILITIES ─────────────────────────────────────────────────────────
+function updateScore() {
+  document.getElementById('gh-score').textContent = `${state.score} pts`;
+  document.getElementById('xp-bar').style.width = state.xp + '%';
+}
+
+function shuffle(arr) {
+  return [...arr].sort(() => Math.random() - 0.5);
+}
+
+function goBack() {
+  window.location.href = `dashboard.html?school=${encodeURIComponent(school)}&id=${encodeURIComponent(sid)}`;
+}
+
+// ── START — Resume-Aware ─────────────────────────────────────────────
+function startGame() {
+  const saved = PROGRESS.getGameState(unitId);
+  if (saved && saved.round >= 1 && saved.wordIndex > 0) {
+    // Ask student if they want to resume
+    document.getElementById('game-header').style.display = 'none';
+    document.getElementById('main-content').innerHTML = `
+      <div class="fade-in center" style="padding:2rem;max-width:480px;margin:0 auto">
+        <div style="font-size:3rem">🔄</div>
+        <h2 style="color:${unitData.color};margin:0.75rem 0">Welcome back!</h2>
+        <div class="card" style="text-align:left;margin:1rem 0">
+          <div style="font-size:0.85rem;color:#999;margin-bottom:0.5rem">YOUR SAVED PROGRESS</div>
+          <div style="font-size:1rem;color:#333">
+            <b>Unit ${unitId}:</b> ${unitData.theme}<br>
+            <b>Round:</b> ${saved.round} of 4<br>
+            <b>Question:</b> ${saved.wordIndex} completed<br>
+            <b>Score:</b> ${saved.score} pts
+          </div>
+        </div>
+        <div class="flex-wrap" style="justify-content:center;gap:1rem">
+          <button class="btn btn-lg" style="background:${unitData.color};color:white"
+            onclick="resumeGame(${saved.round}, ${saved.wordIndex}, ${saved.score}, ${saved.xp})">
+            ▶ Continue from Round ${saved.round}
+          </button>
+          <button class="btn btn-outline btn-sm" style="color:#999;border-color:#ccc"
+            onclick="PROGRESS.clearGameState(${unitId}); showIntro()">
+            Start over
+          </button>
+        </div>
+      </div>`;
+  } else {
+    showIntro();
+  }
+}
+
+function resumeGame(round, wordIndex, score, xp) {
+  state.score = score || 0;
+  state.xp    = xp    || 0;
+  // Pass wordIndex directly into startRound so it is not reset to 0
+  startRound(round, wordIndex || 0);
+}
+
+startGame();
+</script>
+</body>
+</html>
