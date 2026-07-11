@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elementary Symphony — Dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar">
+  <div class="logo">🎵 Elementary Symphony</div>
+  <div class="flex" style="gap:1rem">
+    <div class="student-info" id="nav-info"></div>
+    <button class="btn btn-outline btn-sm" style="color:#e74c3c;border-color:#e74c3c" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<div class="container mt2" id="main-content">
+  <div class="center" style="padding:3rem;color:#999">Loading...</div>
+</div>
+
+<script src="vocabulary-data.js"></script>
+<script src="progress.js"></script>
+<script>
+// Read identity from URL params first (supports multiple students on same machine)
+// Fallback to sessionStorage for teacher/admin and back-navigation
+const urlParams = new URLSearchParams(location.search);
+const urlSchool = urlParams.get('school');
+const urlId     = urlParams.get('id');
+const urlRole   = urlParams.get('role');
+
+// Determine role and identity
+let role   = urlRole   || sessionStorage.getItem('es_role')   || 'student';
+let school = urlSchool || sessionStorage.getItem('es_school') || '';
+let sid    = urlId     || sessionStorage.getItem('es_id')     || '';
+const teacher = sessionStorage.getItem('es_teacher') || '';
+
+// If URL has student params, treat as student regardless of sessionStorage
+if (urlSchool && urlId) { role = 'student'; }
+
+// Sync URL identity back into sessionStorage for this tab
+if (urlSchool) sessionStorage.setItem('es_school', urlSchool);
+if (urlId)     sessionStorage.setItem('es_id', urlId);
+if (role)      sessionStorage.setItem('es_role', role);
+
+if (!role || (role === 'student' && (!school || !sid))) {
+  window.location.href = 'index.html';
+}
+
+document.getElementById('nav-info').textContent =
+  role === 'student' ? `${school} · ${sid}` :
+  role === 'teacher' ? `Teacher: ${teacher}` : 'Admin';
+
+// ── LOAD DASHBOARD ───────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  if (role === 'student') renderStudent();
+  else if (role === 'teacher') renderTeacher();
+  else renderAdmin();
+});
+
+// ════════════════════════════════════════════════════════════════════
+// STUDENT DASHBOARD
+// ════════════════════════════════════════════════════════════════════
+function renderStudent() {
+  PROGRESS.login(school, sid);
+  const user = PROGRESS.current;
+  const totalStars = PROGRESS.getTotalStars();
+  const maxStars = 75 * 3; // 75 words x 3 stars
+
+  let html = `
+    <div class="fade-in">
+      <h1>Welcome back! 👋</h1>
+      <p class="mt1" style="color:#666">Your vocabulary journey — ${school} · ${sid}</p>
+
+      <!-- OVERALL PROGRESS -->
+      <div class="card mt2">
+        <div class="flex" style="justify-content:space-between;flex-wrap:wrap;gap:1rem">
+          <div>
+            <h3>⭐ Total Stars</h3>
+            <div style="font-size:2rem;font-weight:800;color:#F6C90E">${totalStars} <span style="font-size:1rem;color:#999">/ ${maxStars}</span></div>
+          </div>
+          <div>
+            <h3>📚 Units Started</h3>
+            <div style="font-size:2rem;font-weight:800;color:#2E4057">${Object.values(user.units).filter(u=>u.sessionsDone>0).length} <span style="font-size:1rem;color:#999">/ 5</span></div>
+          </div>
+          <div>
+            <h3>🎯 Current Unit</h3>
+            <div style="font-size:2rem;font-weight:800;color:#2D6A4F">Unit ${user.currentUnit}</div>
+          </div>
+        </div>
+        <div class="mt2">
+          <div style="font-size:0.85rem;color:#999;margin-bottom:0.4rem">Overall course progress</div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" style="width:${Math.round(totalStars/maxStars*100)}%;background:#F6C90E"></div>
+          </div>
+          <div style="font-size:0.8rem;color:#999;margin-top:0.3rem">${Math.round(totalStars/maxStars*100)}% complete</div>
+        </div>
+      </div>
+
+      <!-- UNIT CARDS -->
+      <h2 class="mt3">📖 Your Units</h2>
+      <div class="grid-2 mt1" id="unit-grid"></div>
+    </div>`;
+
+  document.getElementById('main-content').innerHTML = html;
+
+  // Render unit cards
+  const grid = document.getElementById('unit-grid');
+  VOCAB_DATA.units.forEach(u => {
+    const up = user.units[u.id];
+    const stars = PROGRESS.getUnitStars(u.id);
+    const pct = Math.round(stars / (u.words.length * 3) * 100);
+    const locked = !up.unlocked;
+    const done = up.quizScore !== null;
+
+    const card = document.createElement('div');
+    card.className = `unit-card ${locked ? 'locked' : ''}`;
+    card.style.setProperty('--unit-color', u.color);
+    card.innerHTML = `
+      ${locked ? '<span class="lock-icon">🔒</span>' : ''}
+      <div class="unit-card-header" style="background:${u.color}">
+        <div style="font-size:0.8rem;opacity:0.8;font-weight:600">UNIT ${u.id}</div>
+        <div style="font-size:1.05rem;font-weight:700;margin-top:0.2rem">${u.theme}</div>
+        <div style="font-size:0.8rem;opacity:0.7;margin-top:0.3rem">🎮 ${u.game}</div>
+      </div>
+      <div class="unit-card-body">
+        <div class="flex" style="justify-content:space-between;margin-bottom:0.5rem">
+          <div class="stars">
+            ${'<span class="star '+(stars>=u.words.length?'filled':'')+'">★</span>'.repeat(3).replace(/filled/g,'')}
+            ${[1,2,3].map(i => `<span class="star ${stars >= u.words.length*i/3 ? 'filled' : ''}">★</span>`).join('')}
+          </div>
+          <span class="badge ${done?'badge-green':'badge-blue'}">${done ? '✅ Done' : up.sessionsDone > 0 ? '▶ In Progress' : '○ Not Started'}</span>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" style="width:${pct}%;background:${u.color}"></div>
+        </div>
+        <div style="font-size:0.78rem;color:#999;margin-top:0.3rem">${stars}/${u.words.length*3} stars · ${pct}%</div>
+        ${done ? `<div style="margin-top:0.5rem;font-size:0.85rem;color:#27ae60;font-weight:600">Quiz: ${up.quizScore}/20</div>` : ''}
+      </div>`;
+    if (!locked) card.onclick = () => {
+  window.location.href = `games.html?unit=${u.id}&school=${encodeURIComponent(school)}&id=${encodeURIComponent(sid)}`;
+};
+    grid.appendChild(card);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// TEACHER DASHBOARD
+// ════════════════════════════════════════════════════════════════════
+function renderTeacher() {
+  // Load all student data for this school from localStorage
+  const students = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(`es_${school}_`)) {
+      try {
+        const data = JSON.parse(localStorage.getItem(key));
+        if (data && data.studentId) students.push(data);
+      } catch(e) {}
+    }
+  }
+
+  let html = `
+    <div class="fade-in">
+      <h1>👩‍🏫 Teacher Dashboard</h1>
+      <p class="mt1" style="color:#666">School: ${school} · ${students.length} student(s) tracked</p>
+
+      <div class="card mt2">
+        <h2>📊 Class Overview</h2>
+        ${students.length === 0 ? '<p style="color:#999;margin-top:1rem">No student data yet. Students need to log in and complete activities.</p>' : ''}
+        <div style="overflow-x:auto;margin-top:1rem">
+          <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+            <thead>
+              <tr style="background:#f0f0f0">
+                <th style="padding:0.5rem;text-align:left">Student ID</th>
+                <th style="padding:0.5rem;text-align:center">Current Unit</th>
+                <th style="padding:0.5rem;text-align:center">⭐ Total Stars</th>
+                ${VOCAB_DATA.units.map(u=>`<th style="padding:0.5rem;text-align:center;background:${u.color}20;color:${u.color}">U${u.id} Quiz</th>`).join('')}
+                <th style="padding:0.5rem;text-align:center">Action</th>
+              </tr>
+            </thead>
+            <tbody id="student-rows">
+              ${students.map(s => {
+                const totalStars = Object.values(s.units).reduce((sum,u)=>sum+Object.values(u.words).reduce((ws,w)=>ws+w.stars,0),0);
+                return `<tr style="border-bottom:1px solid #eee">
+                  <td style="padding:0.5rem;font-weight:600">${s.studentId}</td>
+                  <td style="padding:0.5rem;text-align:center">Unit ${s.currentUnit}</td>
+                  <td style="padding:0.5rem;text-align:center;color:#F6C90E;font-weight:700">${totalStars}</td>
+                  ${VOCAB_DATA.units.map(u=>`<td style="padding:0.5rem;text-align:center">${s.units[u.id]?.quizScore !== null && s.units[u.id]?.quizScore !== undefined ? s.units[u.id].quizScore+'/20' : '–'}</td>`).join('')}
+                  <td style="padding:0.5rem;text-align:center">
+                    <button class="btn btn-sm" style="background:#2E4057;color:white" onclick="viewStudent('${s.schoolCode}','${s.studentId}')">View</button>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card mt2">
+        <h2>🔥 Hardest Words (Most Hints Used)</h2>
+        <div id="hard-words" class="flex-wrap mt1"></div>
+      </div>
+
+      <div class="card mt2">
+        <h2>🎮 Quick Actions</h2>
+        <div class="flex-wrap mt1">
+          <a href="games.html?unit=1&mode=projector" class="btn" style="background:#2E4057;color:white">📽️ Launch Unit 1 Projector Mode</a>
+          <button class="btn btn-outline" style="color:#2D6A4F;border-color:#2D6A4F" onclick="exportCSV()">⬇️ Export Class Data (CSV)</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('main-content').innerHTML = html;
+
+  // Calculate hardest words
+  const wordHints = {};
+  students.forEach(s => {
+    VOCAB_DATA.units.forEach(u => {
+      u.words.forEach(w => {
+        const wd = s.units[u.id]?.words[w.word];
+        if (wd && wd.hintTier > 0) {
+          wordHints[w.word] = (wordHints[w.word] || 0) + wd.hintTier;
+        }
+      });
+    });
+  });
+  const sorted = Object.entries(wordHints).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const hw = document.getElementById('hard-words');
+  if (sorted.length === 0) hw.innerHTML = '<span style="color:#999">No hint data yet.</span>';
+  else sorted.forEach(([word, count]) => {
+    const chip = document.createElement('span');
+    chip.className = 'badge badge-purple';
+    chip.textContent = `${word} (${count} hints)`;
+    hw.appendChild(chip);
+  });
+}
+
+function viewStudent(school, id) {
+  sessionStorage.setItem('es_view_school', school);
+  sessionStorage.setItem('es_view_id', id);
+  alert(`Student Report: ${school} · ${id}\n\nFull individual report view coming in Prototype V2.`);
+}
+
+function exportCSV() {
+  const students = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(`es_${school}_`)) {
+      try { students.push(JSON.parse(localStorage.getItem(key))); } catch(e) {}
+    }
+  }
+  let csv = 'StudentID,Unit,Word,Stars,Attempts,Correct,HintTier\n';
+  students.forEach(s => {
+    VOCAB_DATA.units.forEach(u => {
+      u.words.forEach(w => {
+        const wd = s.units[u.id]?.words[w.word];
+        if (wd) csv += `${s.studentId},${u.id},${w.word},${wd.stars},${wd.attempts},${wd.correct},${wd.hintTier}\n`;
+      });
+    });
+  });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `elementary-symphony-${school}-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ADMIN BOARD
+// ════════════════════════════════════════════════════════════════════
+function renderAdmin() {
+  // Gather all data from localStorage
+  const allStudents = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('es_')) {
+      try {
+        const data = JSON.parse(localStorage.getItem(key));
+        if (data && data.studentId) allStudents.push(data);
+      } catch(e) {}
+    }
+  }
+
+  const schools = [...new Set(allStudents.map(s=>s.schoolCode))];
+  const totalStarsAll = allStudents.reduce((sum,s)=>sum+Object.values(s.units).reduce((us,u)=>us+Object.values(u.words).reduce((ws,w)=>ws+w.stars,0),0),0);
+
+  document.getElementById('main-content').innerHTML = `
+    <div class="fade-in">
+      <h1>🛡️ Admin Board</h1>
+      <p class="mt1" style="color:#666">Elementary Symphony — System-Wide Analytics</p>
+
+      <div class="grid-3 mt2">
+        <div class="card center">
+          <div style="font-size:2rem;font-weight:800;color:#7B2D8B">${schools.length}</div>
+          <div style="color:#666;font-size:0.9rem">Schools</div>
+        </div>
+        <div class="card center">
+          <div style="font-size:2rem;font-weight:800;color:#2E4057">${allStudents.length}</div>
+          <div style="color:#666;font-size:0.9rem">Total Students</div>
+        </div>
+        <div class="card center">
+          <div style="font-size:2rem;font-weight:800;color:#F6C90E">${totalStarsAll}</div>
+          <div style="color:#666;font-size:0.9rem">Total Stars Earned</div>
+        </div>
+      </div>
+
+      <div class="card mt2">
+        <h2>🏫 Schools Enrolled</h2>
+        ${schools.length === 0 ? '<p style="color:#999;margin-top:1rem">No school data yet.</p>' : `
+        <table style="width:100%;border-collapse:collapse;margin-top:1rem;font-size:0.9rem">
+          <thead><tr style="background:#f0f0f0">
+            <th style="padding:0.6rem;text-align:left">School Code</th>
+            <th style="padding:0.6rem;text-align:center">Students</th>
+            <th style="padding:0.6rem;text-align:center">Avg Stars</th>
+            <th style="padding:0.6rem;text-align:center">Units Completed</th>
+          </tr></thead>
+          <tbody>
+            ${schools.map(sc => {
+              const ss = allStudents.filter(s=>s.schoolCode===sc);
+              const avgStars = ss.length ? Math.round(ss.reduce((sum,s)=>sum+Object.values(s.units).reduce((us,u)=>us+Object.values(u.words).reduce((ws,w)=>ws+w.stars,0),0),0)/ss.length) : 0;
+              const unitsCompleted = ss.reduce((sum,s)=>sum+Object.values(s.units).filter(u=>u.quizScore!==null).length,0);
+              return `<tr style="border-bottom:1px solid #eee">
+                <td style="padding:0.6rem;font-weight:600">${sc}</td>
+                <td style="padding:0.6rem;text-align:center">${ss.length}</td>
+                <td style="padding:0.6rem;text-align:center;color:#F6C90E;font-weight:700">${avgStars}</td>
+                <td style="padding:0.6rem;text-align:center">${unitsCompleted}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`}
+      </div>
+
+      <div class="card mt2">
+        <h2>📥 Export All Data</h2>
+        <p style="color:#666;font-size:0.9rem;margin:0.5rem 0">Download all student performance data across all schools as CSV for research analysis.</p>
+        <button class="btn mt1" style="background:#7B2D8B;color:white" onclick="exportAllCSV(${JSON.stringify(allStudents).replace(/"/g,'&quot;')})">⬇️ Export All Schools CSV</button>
+      </div>
+    </div>`;
+}
+
+function exportAllCSV(students) {
+  let csv = 'School,StudentID,Unit,Word,Stars,Attempts,Correct,HintTier,LastSeen\n';
+  students.forEach(s => {
+    VOCAB_DATA.units.forEach(u => {
+      u.words.forEach(w => {
+        const wd = s.units[u.id]?.words[w.word];
+        if (wd) csv += `${s.schoolCode},${s.studentId},${u.id},${w.word},${wd.stars},${wd.attempts},${wd.correct},${wd.hintTier},${wd.lastSeen||''}\n`;
+      });
+    });
+  });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `elementary-symphony-ALL-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+function logout() {
+  PROGRESS.logout();
+  sessionStorage.clear();
+  window.location.href = 'index.html';
+}
+</script>
+</body>
+</html>
