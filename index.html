@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elementary Symphony — Login</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card fade-in">
+    <div class="center">
+      <div class="login-logo">🎵</div>
+      <div class="login-title">Elementary Symphony</div>
+      <div class="login-sub">AI-Enhanced English Vocabulary Learning<br>Grade 4–5 | Nepal</div>
+    </div>
+
+    <!-- ROLE SELECTOR -->
+    <div class="form-group mt2">
+      <label>I am a:</label>
+      <div class="flex-wrap" style="gap:0.5rem">
+        <button class="btn btn-outline btn-sm" style="color:#2E4057;border-color:#2E4057" onclick="selectRole('student')" id="role-student">🧑‍🎓 Student</button>
+        <button class="btn btn-outline btn-sm" style="color:#2D6A4F;border-color:#2D6A4F" onclick="selectRole('teacher')" id="role-teacher">👩‍🏫 Teacher</button>
+        <button class="btn btn-outline btn-sm" style="color:#7B2D8B;border-color:#7B2D8B" onclick="selectRole('admin')" id="role-admin">🛡️ Admin</button>
+      </div>
+    </div>
+
+    <!-- STUDENT LOGIN -->
+    <div id="form-student">
+      <div class="form-group">
+        <label>School Code</label>
+        <input type="text" id="s-school" placeholder="e.g. SYM2026" maxlength="10" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label>Student ID</label>
+        <input type="text" id="s-id" placeholder="e.g. STU07" maxlength="8" style="text-transform:uppercase">
+      </div>
+      <div id="s-error" style="color:#e74c3c;font-size:0.85rem;margin-bottom:0.5rem;display:none"></div>
+      <button class="btn btn-primary btn-lg" style="width:100%;background:#2E4057" onclick="loginStudent()">Start Learning 🚀</button>
+    </div>
+
+    <!-- TEACHER LOGIN -->
+    <div id="form-teacher" style="display:none">
+      <div class="form-group">
+        <label>School Code</label>
+        <input type="text" id="t-school" placeholder="e.g. SYM2026" maxlength="10" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label>Teacher ID</label>
+        <input type="text" id="t-id" placeholder="e.g. TCH01" maxlength="8" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label>PIN</label>
+        <input type="password" id="t-pin" placeholder="4-digit PIN" maxlength="4">
+      </div>
+      <button class="btn btn-lg" style="width:100%;background:#2D6A4F;color:white" onclick="loginTeacher()">Enter Dashboard 📊</button>
+    </div>
+
+    <!-- ADMIN LOGIN -->
+    <div id="form-admin" style="display:none">
+      <div class="form-group">
+        <label>Admin ID</label>
+        <input type="text" id="a-id" placeholder="admin@elementary-symphony">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="a-pw" placeholder="Admin password">
+      </div>
+      <button class="btn btn-lg" style="width:100%;background:#7B2D8B;color:white" onclick="loginAdmin()">Admin Board 🛡️</button>
+    </div>
+
+    <div class="center mt2" style="font-size:0.78rem;color:#aaa">
+      Offline-capable · No personal data stored · Elementary Symphony v1.0
+    </div>
+  </div>
+</div>
+
+<script src="vocabulary-data.js"></script>
+<script src="progress.js"></script>
+<script>
+let selectedRole = 'student';
+
+function selectRole(role) {
+  selectedRole = role;
+  ['student','teacher','admin'].forEach(r => {
+    document.getElementById('form-' + r).style.display = r === role ? 'block' : 'none';
+    const btn = document.getElementById('role-' + r);
+    btn.style.fontWeight = r === role ? '800' : '600';
+    btn.style.opacity = r === role ? '1' : '0.6';
+  });
+}
+
+function loginStudent() {
+  const school = document.getElementById('s-school').value.trim().toUpperCase();
+  const id     = document.getElementById('s-id').value.trim().toUpperCase();
+  const err    = document.getElementById('s-error');
+  if (!school || !id) { err.textContent = 'Please enter your School Code and Student ID.'; err.style.display='block'; return; }
+  err.style.display = 'none';
+  PROGRESS.login(school, id);
+  sessionStorage.setItem('es_role', 'student');
+  sessionStorage.setItem('es_school', school);
+  sessionStorage.setItem('es_id', id);
+  window.location.href = 'dashboard.html';
+}
+
+function loginTeacher() {
+  const school = document.getElementById('t-school').value.trim().toUpperCase();
+  const id     = document.getElementById('t-id').value.trim().toUpperCase();
+  const pin    = document.getElementById('t-pin').value.trim();
+  if (!school || !id || !pin) { alert('Please fill in all fields.'); return; }
+  // Simple PIN check for Prototype V1 (PIN: 1234 for demo)
+  if (pin !== '1234') { alert('Incorrect PIN. For demo use: 1234'); return; }
+  sessionStorage.setItem('es_role', 'teacher');
+  sessionStorage.setItem('es_school', school);
+  sessionStorage.setItem('es_teacher', id);
+  window.location.href = 'dashboard.html';
+}
+
+function loginAdmin() {
+  const id = document.getElementById('a-id').value.trim();
+  const pw = document.getElementById('a-pw').value.trim();
+  if (!id || !pw) { alert('Please enter Admin ID and Password.'); return; }
+  sessionStorage.setItem('es_role', 'admin');
+  window.location.href = 'dashboard.html';
+}
+
+// Allow Enter key to submit
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    if (selectedRole === 'student') loginStudent();
+    else if (selectedRole === 'teacher') loginTeacher();
+    else loginAdmin();
+  }
+});
+</script>
+</body>
+</html>
