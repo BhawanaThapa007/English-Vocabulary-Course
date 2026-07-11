@@ -475,9 +475,9 @@ function showUnitComplete() {
       </div>
 
       <div class="flex-wrap" style="justify-content:center;gap:1rem;margin-top:1rem">
-        ${unitId < 5 ? `<button class="btn btn-lg" style="background:${VOCAB_DATA.units[unitId].color};color:white" onclick="window.location.href=`games.html?unit=${unitId+1}&school=${encodeURIComponent(school)}&id=${encodeURIComponent(sid)}`">
+        ${unitId < 5 ? `<button class="btn btn-lg" style="background:${VOCAB_DATA.units[unitId].color};color:white" onclick="goNextUnit()">
           Next: Unit ${unitId+1} →
-        </button>` : '<div class="badge badge-gold" style="font-size:1rem;padding:0.75rem 1.5rem">🏅 All Units Complete!</div>'}
+        </button>` : '<div class="badge badge-gold" style="font-size:1rem;padding:0.75rem 1.5rem">&#127885; All Units Complete!</div>'}
         <button class="btn btn-outline" style="color:${unitData.color};border-color:${unitData.color}" onclick="goBack()">
           ← Dashboard
         </button>
@@ -495,8 +495,12 @@ function shuffle(arr) {
   return [...arr].sort(() => Math.random() - 0.5);
 }
 
+function goNextUnit() {
+  window.location.href = 'games.html?unit=' + (unitId + 1) + '&school=' + encodeURIComponent(school) + '&id=' + encodeURIComponent(sid);
+}
+
 function goBack() {
-  window.location.href = `dashboard.html?school=${encodeURIComponent(school)}&id=${encodeURIComponent(sid)}`;
+  window.location.href = 'dashboard.html?school=' + encodeURIComponent(school) + '&id=' + encodeURIComponent(sid);
 }
 
 // ── START — Resume-Aware ─────────────────────────────────────────────
@@ -524,7 +528,7 @@ function startGame() {
             ▶ Continue from Round ${saved.round}
           </button>
           <button class="btn btn-outline btn-sm" style="color:#999;border-color:#ccc"
-            onclick="PROGRESS.clearGameState(${unitId}); showIntro()">
+            onclick="PROGRESS.clearGameState(unitId); showIntro()">
             Start over
           </button>
         </div>
