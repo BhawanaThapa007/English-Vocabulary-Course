@@ -59,11 +59,19 @@
 // ── INIT ─────────────────────────────────────────────────────────────
 const params  = new URLSearchParams(location.search);
 const unitId  = parseInt(params.get('unit')) || 1;
-const school  = sessionStorage.getItem('es_school');
-const sid     = sessionStorage.getItem('es_id');
+
+// Read student identity from URL first (supports multiple students)
+// This means each student's game URL is independent — bookmarkable
+const school = (params.get('school') || sessionStorage.getItem('es_school') || '').toUpperCase();
+const sid    = (params.get('id')     || sessionStorage.getItem('es_id')     || '').toUpperCase();
 
 if (!school || !sid) { window.location.href = 'index.html'; }
 
+// Sync to sessionStorage for this tab
+sessionStorage.setItem('es_school', school);
+sessionStorage.setItem('es_id', sid);
+
+// Load this student's saved data from localStorage
 PROGRESS.login(school, sid);
 const unitData = VOCAB_DATA.units.find(u => u.id === unitId);
 if (!unitData) { window.location.href = 'dashboard.html'; }
@@ -140,10 +148,15 @@ function showStory() {
 }
 
 // ── ROUND ENGINE ──────────────────────────────────────────────────────
-function startRound(round) {
+function startRound(round, resumeFromIndex) {
   state.round = round;
   state.phase = `round${round}`;
-  state.wordIndex = 0;
+  // Only reset wordIndex if NOT resuming — preserve resume position
+  if (typeof resumeFromIndex === 'number') {
+    state.wordIndex = resumeFromIndex;
+  } else {
+    state.wordIndex = 0;
+  }
   state.hintTier = 0;
   state.score = state.score || 0;
 
@@ -462,7 +475,7 @@ function showUnitComplete() {
       </div>
 
       <div class="flex-wrap" style="justify-content:center;gap:1rem;margin-top:1rem">
-        ${unitId < 5 ? `<button class="btn btn-lg" style="background:${VOCAB_DATA.units[unitId].color};color:white" onclick="window.location.href='games.html?unit=${unitId+1}'">
+        ${unitId < 5 ? `<button class="btn btn-lg" style="background:${VOCAB_DATA.units[unitId].color};color:white" onclick="window.location.href=`games.html?unit=${unitId+1}&school=${encodeURIComponent(school)}&id=${encodeURIComponent(sid)}`">
           Next: Unit ${unitId+1} →
         </button>` : '<div class="badge badge-gold" style="font-size:1rem;padding:0.75rem 1.5rem">🏅 All Units Complete!</div>'}
         <button class="btn btn-outline" style="color:${unitData.color};border-color:${unitData.color}" onclick="goBack()">
@@ -483,7 +496,7 @@ function shuffle(arr) {
 }
 
 function goBack() {
-  window.location.href = 'dashboard.html';
+  window.location.href = `dashboard.html?school=${encodeURIComponent(school)}&id=${encodeURIComponent(sid)}`;
 }
 
 // ── START — Resume-Aware ─────────────────────────────────────────────
@@ -524,8 +537,8 @@ function startGame() {
 function resumeGame(round, wordIndex, score, xp) {
   state.score = score || 0;
   state.xp    = xp    || 0;
-  state.wordIndex = wordIndex || 0;
-  startRound(round);
+  // Pass wordIndex directly into startRound so it is not reset to 0
+  startRound(round, wordIndex || 0);
 }
 
 startGame();
