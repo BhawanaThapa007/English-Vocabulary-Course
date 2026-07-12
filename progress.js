@@ -133,6 +133,83 @@ const PROGRESS = {
     };
   },
 
+  // ── BADGE SYSTEM ─────────────────────────────────────────────────────
+  BADGE_DEFINITIONS: [
+    { id: 'first_word',    emoji: '🌟', name: 'First Star',       desc: 'Earned your first star',                check: (u) => Object.values(u.words).some(w => w.stars >= 1) },
+    { id: 'no_hints',      emoji: '🧠', name: 'Brain Power',      desc: 'Completed a round without any hints',   check: (u) => u.perfectRound === true },
+    { id: 'perfect_round', emoji: '🎯', name: 'Sharp Shooter',    desc: 'Got 5 correct answers in a row',        check: (u) => u.streak >= 5 },
+    { id: 'half_stars',    emoji: '⭐', name: 'Halfway There',    desc: 'Earned stars on 8+ words in a unit',    check: (u) => Object.values(u.words).filter(w => w.stars >= 1).length >= 8 },
+    { id: 'all_stars_1',   emoji: '🏆', name: 'Unit Champion',    desc: 'Earned at least 1 star on all 15 words',check: (u) => Object.values(u.words).filter(w => w.stars >= 1).length >= 15 },
+    { id: 'gold_unit',     emoji: '👑', name: 'Gold Master',      desc: 'Earned 3 stars on 10+ words in a unit', check: (u) => Object.values(u.words).filter(w => w.stars === 3).length >= 10 },
+    { id: 'persistent',    emoji: '💪', name: 'Never Give Up',    desc: 'Retried after a wrong answer and got it right', check: (u) => u.retrySuccess === true },
+    { id: 'unit_complete', emoji: '🎓', name: 'Unit Graduate',    desc: 'Completed all 4 rounds of a unit',      check: (u) => u.sessionsDone >= 4 },
+  ],
+
+  checkAndAwardBadges(unitId) {
+    if (!this._current) return [];
+    const u = this.getUnitProgress(unitId);
+    if (!u) return [];
+    if (!this._current.badges) this._current.badges = [];
+    const newBadges = [];
+    this.BADGE_DEFINITIONS.forEach(def => {
+      if (!this._current.badges.includes(def.id) && def.check(u)) {
+        this._current.badges.push(def.id);
+        newBadges.push(def);
+      }
+    });
+    if (newBadges.length) this._saveCurrentUser();
+    return newBadges;
+  },
+
+  getBadges() {
+    if (!this._current || !this._current.badges) return [];
+    return (this._current.badges || []).map(id =>
+      this.BADGE_DEFINITIONS.find(d => d.id === id)
+    ).filter(Boolean);
+  },
+
+  recordStreak(unitId, correct) {
+    const u = this.getUnitProgress(unitId);
+    if (!u) return;
+    if (correct) {
+      u.streak = (u.streak || 0) + 1;
+      if (u.streak >= 5) u.streak5 = true;
+    } else {
+      u.streak = 0;
+    }
+    this._saveCurrentUser();
+  },
+
+  recordRetrySuccess(unitId) {
+    const u = this.getUnitProgress(unitId);
+    if (u) { u.retrySuccess = true; this._saveCurrentUser(); }
+  },
+
+  recordPerfectRound(unitId) {
+    const u = this.getUnitProgress(unitId);
+    if (u) { u.perfectRound = true; this._saveCurrentUser(); }
+  },
+
+  // ── TEAM CHALLENGE ────────────────────────────────────────────────────
+  saveTeamScore(schoolCode, unitId, round, score, teamName) {
+    const key = 'es_team_' + schoolCode;
+    let data = {};
+    try { data = JSON.parse(localStorage.getItem(key) || '{}'); } catch(e) {}
+    if (!data[unitId]) data[unitId] = [];
+    data[unitId].push({ teamName, round, score, ts: Date.now() });
+    // Keep only last 50 entries
+    if (data[unitId].length > 50) data[unitId] = data[unitId].slice(-50);
+    try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {}
+  },
+
+  getTeamScores(schoolCode, unitId) {
+    const key = 'es_team_' + schoolCode;
+    try {
+      const data = JSON.parse(localStorage.getItem(key) || '{}');
+      return (data[unitId] || []).sort((a,b) => b.score - a.score).slice(0, 10);
+    } catch(e) { return []; }
+  },
+
   // ── GAME STATE (Resume Facility) ─────────────────────────────────
   saveGameState(unitId, round, wordIndex, score, xp) {
     if (!this._current) return;

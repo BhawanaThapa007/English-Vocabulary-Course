@@ -102,6 +102,16 @@ function renderStudent() {
       <!-- UNIT CARDS -->
       <h2 class="mt3">📖 Your Units</h2>
       <div class="grid-2 mt1" id="unit-grid"></div>
+
+      <!-- BADGES -->
+      <h2 class="mt3">🏅 Your Badges</h2>
+      <div id="badge-grid" class="flex-wrap mt1"></div>
+
+      <!-- ALL BADGES REFERENCE -->
+      <div class="card mt2" style="background:#f8f9fa">
+        <h3 style="color:#555;margin-bottom:0.75rem">🎯 Badges to Earn</h3>
+        <div id="all-badges-grid" class="flex-wrap"></div>
+      </div>
     </div>`;
 
   document.getElementById('main-content').innerHTML = html;
@@ -143,6 +153,31 @@ function renderStudent() {
   window.location.href = `games.html?unit=${u.id}&school=${encodeURIComponent(school)}&id=${encodeURIComponent(sid)}`;
 };
     grid.appendChild(card);
+  });
+
+  // Render earned badges
+  const badgeGrid = document.getElementById('badge-grid');
+  const earnedBadges = PROGRESS.getBadges();
+  if (earnedBadges.length === 0) {
+    badgeGrid.innerHTML = '<div style="color:#999;font-size:0.9rem">Play the games to earn badges! 🎮</div>';
+  } else {
+    earnedBadges.forEach(b => {
+      const el = document.createElement('div');
+      el.style.cssText = 'background:white;border:2px solid #F6C90E;border-radius:12px;padding:0.75rem 1rem;text-align:center;min-width:120px;box-shadow:0 2px 8px rgba(246,201,14,0.3)';
+      el.innerHTML = '<div style="font-size:2rem">' + b.emoji + '</div><div style="font-size:0.8rem;font-weight:700;color:#1F3864;margin-top:0.3rem">' + b.name + '</div><div style="font-size:0.72rem;color:#888">' + b.desc + '</div>';
+      badgeGrid.appendChild(el);
+    });
+  }
+
+  // Show all available badges (greyed out if not earned)
+  const allBadgesGrid = document.getElementById('all-badges-grid');
+  const earnedIds = earnedBadges.map(b => b.id);
+  PROGRESS.BADGE_DEFINITIONS.forEach(b => {
+    const earned = earnedIds.includes(b.id);
+    const el = document.createElement('div');
+    el.style.cssText = 'border:2px solid ' + (earned ? '#F6C90E' : '#eee') + ';border-radius:10px;padding:0.6rem 0.8rem;text-align:center;min-width:110px;opacity:' + (earned ? '1' : '0.4');
+    el.innerHTML = '<div style="font-size:1.5rem">' + b.emoji + '</div><div style="font-size:0.75rem;font-weight:700;color:#333;margin-top:0.2rem">' + b.name + '</div>';
+    allBadgesGrid.appendChild(el);
   });
 }
 
